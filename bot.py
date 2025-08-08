@@ -10,6 +10,7 @@ API_URL = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
 app = Flask(__name__)
 running = False
 base_period = None
+waiting_for_period = False
 
 def predict_signal(period):
     number = period % 10
@@ -28,7 +29,7 @@ def signal_loop():
 
 @app.route(f"/{BOT_TOKEN}", methods=["POST"])
 def webhook():
-    global running, base_period
+    global running, base_period, waiting_for_period
     data = request.get_json()
     if not data or 'message' not in data:
         return "ok"
@@ -41,23 +42,26 @@ def webhook():
         return "unauthorized"
 
     if text == '/start':
-        if not running and base_period is not None:
-            running = True
-            threading.Thread(target=signal_loop).start()
-            send_message("✅ Bot started.")
+        if not running:
+            waiting_for_period = True
+            send_message("📥 Please send the latest 10-digit Wingo period number.")
         else:
-            send_message("⚠️ Send a period number first or bot already running.")
+            send_message("⚠️ Bot already running. Send /stop to stop it.")
 
     elif text == '/stop':
         running = False
+        waiting_for_period = False
         send_message("🛑 Bot stopped.")
 
-    elif text.isdigit() and len(text) >= 5:
+    elif waiting_for_period and text.isdigit() and len(text) == 10:
         base_period = int(text)
-        send_message(f"📌 Base period set: {base_period}\nNow send /start to begin.")
+        waiting_for_period = False
+        running = True
+        send_message(f"✅ Starting from period {base_period}...")
+        threading.Thread(target=signal_loop).start()
 
     else:
-        send_message("❓ Unknown command.")
+        send_message("❓ Unknown command or invalid input.")
 
     return "ok"
 
